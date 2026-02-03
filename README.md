@@ -18,6 +18,8 @@
 
 Whether you're managing AI agent skills, developer competencies, or any categorized skill sets, Skill Librarian provides an intuitive way to keep everything organized and easily accessible.
 
+> **Note:** This project is under active development. The documentation below describes the planned features and API. Contributions are welcome!
+
 ## ✨ Features
 
 - 📁 **JSON Upload Support** - Import skills through simple JSON file uploads
