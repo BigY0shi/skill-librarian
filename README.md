@@ -38,8 +38,11 @@ git clone https://github.com/BigY0shi/skill-librarian.git
 # Navigate to the project directory
 cd skill-librarian
 
-# Install dependencies
-npm install  # or pip install -r requirements.txt, depending on your implementation
+# Install dependencies (choose based on implementation)
+# For Node.js:
+npm install
+# For Python:
+pip install -r requirements.txt
 ```
 
 ### Usage
@@ -156,12 +159,23 @@ skill-librarian export --format html skills-report.html
 
 ### API Integration
 Integrate Skill Librarian into your applications:
+
+**JavaScript/Node.js:**
 ```javascript
 const SkillLibrarian = require('skill-librarian');
 
 const librarian = new SkillLibrarian();
 await librarian.loadSkills('skills.json');
 const results = librarian.search('machine learning');
+```
+
+**Python:**
+```python
+from skill_librarian import SkillLibrarian
+
+librarian = SkillLibrarian()
+librarian.load_skills('skills.json')
+results = librarian.search('machine learning')
 ```
 
 ## 🤝 Contributing
