@@ -1,0 +1,173 @@
+import os
+import copy
+import json
+import re
+import sys
+
+# Default Categories (Fallback)
+DEFAULT_CATEGORIES = {
+    "Infrastructure": ["proxmox", "homelab", "docker", "server", "network", "cloud", "deploy"],
+    "AI & Agents": ["agent", "ai", "claude", "gemini", "assistant", "persona", "llm", "humanlayer"],
+    "Development & Specialized Skills": ["fullstack", "frontend", "backend", "code", "dev", "react", "ui", "ux", "web", "3d"],
+    "Creative & Content": ["design", "marketing", "illustrator", "creative", "art"],
+    "Utilities": ["script", "utility", "tool", "helper", "mcp", "cli"],
+    "Core Functionality": ["rule", "workflow", "system", "manager", "asset librarian"]
+}
+
+def parse_frontmatter(content):
+    match = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+    if match:
+        yaml_content = match.group(1)
+        data = {}
+        for line in yaml_content.split('\n'):
+            if ':' in line:
+                key, value = line.split(':', 1)
+                data[key.strip()] = value.strip().strip('"')
+        return data
+    return {}
+
+def classify_skill(name, description, categories):
+    text = (name + " " + description).lower()
+    for category, keywords in categories.items():
+        for keyword in keywords:
+            if keyword in text:
+                return category
+    return "Utilities" # Default
+
+def get_user_input(prompt, default=None):
+    if default:
+        user_input = input(f"{prompt} [{default}]: ").strip()
+        return user_input if user_input else default
+    else:
+        return input(f"{prompt}: ").strip()
+
+def main():
+    print("--- Skill Inventory Generator ---")
+    
+    # 1. Get Skills Directory
+    while True:
+        skills_dir = get_user_input("Enter the path to your 'skills' directory")
+        # Remove quotes if user copied as path
+        skills_dir = skills_dir.strip('"').strip("'")
+        if os.path.isdir(skills_dir):
+            break
+        print(f"Error: Directory not found at {skills_dir}. Please try again.")
+
+    # 2. Get Output Directory
+    default_output = os.getcwd()
+    output_dir = get_user_input("Enter output directory", default_output)
+    output_dir = output_dir.strip('"').strip("'")
+    
+    if not os.path.exists(output_dir):
+        create = get_user_input(f"Output directory '{output_dir}' does not exist. Create it? (y/n)", "y")
+        if create.lower() == 'y':
+            os.makedirs(output_dir, exist_ok=True)
+        else:
+            print("Aborting.")
+            return
+
+    # 3. Get Categories
+    categories = DEFAULT_CATEGORIES
+    use_custom_cats = get_user_input("Do you want to load custom categories from a JSON file? (y/n)", "n")
+    if use_custom_cats.lower() == 'y':
+        while True:
+            cat_file = get_user_input("Enter path to categories.json")
+            cat_file = cat_file.strip('"').strip("'")
+            if os.path.exists(cat_file):
+                try:
+                    with open(cat_file, 'r', encoding='utf-8') as f:
+                        categories = json.load(f)
+                    print("Custom categories loaded.")
+                    break
+                except Exception as e:
+                    print(f"Error reading JSON: {e}")
+            else:
+                print("File not found.")
+
+    print("\nProcessing...")
+    skills = []
+
+    for item in os.listdir(skills_dir):
+        item_path = os.path.join(skills_dir, item)
+        if os.path.isdir(item_path):
+            skill_md_path = os.path.join(item_path, "SKILL.md")
+            
+            # specific handling for the 'Rules' folder
+            if item.lower() == "rules":
+                 skills.append({
+                    "id": "rules", # Normalized ID
+                    "name": "Rules",
+                    "path": "skills/Rules",
+                    "category": "Core Functionality",
+                    "description": "System rules and operational guidelines.",
+                    "tags": ["rules", "core"]
+                })
+                 continue
+
+            if os.path.exists(skill_md_path):
+                with open(skill_md_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    metadata = parse_frontmatter(content)
+                    
+                    name = item 
+                    description = metadata.get('description', 'No description provided.')
+                    
+                    internal_name = metadata.get('name')
+                    if internal_name and internal_name != name:
+                        description = f"**{internal_name}**: {description}"
+                    
+                    category = classify_skill(internal_name or name, description, categories)
+                    
+                    skills.append({
+                        "id": name, # Added ID for compatibility
+                        "name": name,
+                        "path": f"skills/{item}",
+                        "category": category,
+                        "description": description,
+                        "tags": [] 
+                    })
+            else:
+                 # Fallback: Check for README.md
+                 readme_path = os.path.join(item_path, "README.md")
+                 description = "No SKILL.md found."
+                 if os.path.exists(readme_path):
+                      with open(readme_path, 'r', encoding='utf-8') as f:
+                           content = f.read(500) 
+                           description = f"derived from README: {content[:100].replace(chr(10), ' ')}..."
+                 
+                 category = classify_skill(item, description, categories)
+                 
+                 skills.append({
+                    "id": item,
+                    "name": item,
+                    "path": f"skills/{item}",
+                    "category": category, 
+                    "description": description,
+                    "tags": []
+                 })
+
+    # Sort skills
+    skills.sort(key=lambda x: (x.get('category', 'Utilities'), x['name']))
+
+    # Generate JSON
+    json_path = os.path.join(output_dir, "skills_index.json") # Renamed to match app expectation
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(skills, f, indent=2)
+
+    # Generate Markdown
+    md_path = os.path.join(output_dir, "skill_inventory.md")
+    with open(md_path, 'w', encoding='utf-8') as f:
+        f.write("# Skill Inventory\n\n")
+        f.write("| Name | Category | Description | Path |\n")
+        f.write("|---|---|---|---|\n")
+        for skill in skills:
+            desc = skill['description'].replace('|', r'\|')
+            f.write(f"| {skill['name']} | {skill.get('category', 'N/A')} | {desc} | [`{skill['path']}`]({skill['path']}) |\n")
+
+    print(f"\nSuccess! Files generated:")
+    print(f"1. JSON: {json_path}")
+    print(f"2. Markdown: {md_path}")
+    print(f"Total skills processed: {len(skills)}")
+
+if __name__ == "__main__":
+    main()
